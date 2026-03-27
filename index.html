@@ -5,12 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard Ejecutivo | Transporte Bocar</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
     <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@300;400;600;700&display=swap" rel="stylesheet">
     <style>
         :root { 
-            --primary: #0A3D24;     /* Verde oscuro corporativo */
-            --secondary: #1E6B3F;   /* Verde medio */
-            --accent: #00B259;      /* Verde brillante para acentos */
+            --primary: #0A3D24;     
+            --secondary: #1E6B3F;   
+            --accent: #00B259;      
             --bg: #f4f7f6; 
             --white: #ffffff; 
             --text-main: #2c3e50;
@@ -86,6 +87,32 @@
             font-weight: 600;
         }
         .chart-container { flex-grow: 1; position: relative; }
+        
+        .comments-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding-right: 10px;
+        }
+        .comments-container::-webkit-scrollbar { width: 6px; }
+        .comments-container::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .comment-item {
+            background: #f8fcf9;
+            border-left: 4px solid var(--accent);
+            padding: 12px 15px;
+            margin-bottom: 10px;
+            border-radius: 0 6px 6px 0;
+            font-size: 0.9em;
+            color: #455a64;
+            line-height: 1.4;
+        }
+        .comment-route {
+            display: block;
+            margin-top: 5px;
+            font-size: 0.8em;
+            color: var(--secondary);
+            font-weight: 600;
+        }
+
         #status { font-size: 0.85em; opacity: 0.9; margin-top: 8px; font-weight: 300; }
         .error-msg { color: #ff5252; font-weight: bold; background: rgba(255,255,255,0.9); padding: 5px 10px; border-radius: 4px; }
     </style>
@@ -100,7 +127,7 @@
     <div class="kpi-grid">
         <div class="kpi-card"><h3>Encuestas Totales</h3><p id="total">0</p></div>
         <div class="kpi-card"><h3>Puntualidad</h3><p id="puntualidad">0%</p></div>
-        <div class="kpi-card"><h3>Nivel de Servicio</h3><p id="calif">--</p></div>
+        <div class="kpi-card"><h3>Nivel de Servicio</h3><p id="calif">0%</p></div>
         <div class="kpi-card"><h3>Seguridad Vial</h3><p id="seguridad">0%</p></div>
     </div>
 
@@ -110,27 +137,36 @@
             <div class="chart-container"><canvas id="chartRutas"></canvas></div>
         </div>
         <div class="chart-box">
+            <h2>Calificación del Servicio en General</h2>
+            <div class="chart-container"><canvas id="chartGeneral"></canvas></div>
+        </div>
+        <div class="chart-box">
             <h2>Atención del Operador (Promedio)</h2>
             <div class="chart-container"><canvas id="chartAtencion"></canvas></div>
+        </div>
+        <div class="chart-box">
+            <h2>Seguridad en Conducción (Promedio)</h2>
+            <div class="chart-container"><canvas id="chartVial"></canvas></div>
         </div>
         <div class="chart-box">
             <h2>Estado de la Unidad (Promedio)</h2>
             <div class="chart-container"><canvas id="chartUnidad"></canvas></div>
         </div>
         <div class="chart-box">
-            <h2>Seguridad en Conducción (Promedio)</h2>
-            <div class="chart-container"><canvas id="chartVial"></canvas></div>
+            <h2>¿Qué mejorarías del servicio?</h2>
+            <div class="comments-container" id="commentsBox">
+                </div>
         </div>
     </div>
 
 <script>
+Chart.register(ChartDataLabels);
+
 const csvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ4qE0uQ7au6k7opbEvUSOaBN_mtUUZ12lMxDmQRAXH6misTVwJvmiZy5O-fLrqJf9fN_jFl1Axpsc5/pub?output=csv';
 
-// Función robusta para leer CSV
 function parseCSV(text) {
     const result = [];
     let row = [], inQuotes = false, currentVal = '';
-    
     for (let i = 0; i < text.length; i++) {
         let char = text[i];
         if (inQuotes) {
@@ -154,24 +190,19 @@ function parseCSV(text) {
     return result;
 }
 
-// Función para traducir las respuestas de texto a escala de números (1 al 5)
 function textoANumero(valor) {
     if (!valor) return 0;
-    
     let texto = valor.toString().toLowerCase().trim();
-    
-    // Si la celda ya viniera como número, lo respeta
     let num = parseFloat(texto);
     if (!isNaN(num) && texto.length === 1) return num;
 
-    // Escala proporcionada
     if (texto.includes('muy bueno')) return 5;
-    if (texto.includes('bueno') && !texto.includes('muy')) return 4; // Evita confundir 'Bueno' con 'Muy Bueno'
+    if (texto.includes('bueno') && !texto.includes('muy')) return 4; 
     if (texto.includes('regular')) return 3;
     if (texto.includes('muy malo')) return 1;
-    if (texto.includes('malo') && !texto.includes('muy')) return 2;  // Evita confundir 'Malo' con 'Muy Malo'
+    if (texto.includes('malo') && !texto.includes('muy')) return 2;  
 
-    return 0; // Por si hay celdas vacías o con texto desconocido
+    return 0; 
 }
 
 async function loadData() {
@@ -182,33 +213,29 @@ async function loadData() {
         const csvText = await response.text();
         const rows = parseCSV(csvText.trim());
         
-        if (rows.length < 2) {
-            document.getElementById('status').innerHTML = '<span class="error-msg">La hoja de cálculo está vacía o no tiene formato válido.</span>';
-            return;
-        }
+        if (rows.length < 2) return;
 
-        const data = rows.slice(1); // Omitir encabezados
+        const data = rows.slice(1);
         let totalValidos = 0;
         let puntualidadSi = 0;
+        
         const rutas = {};
         const sumAtencion = { amabilidad: 0, actitud: 0, atencion: 0 };
         const sumUnidad = { limpieza: 0, asientos: 0, cinturones: 0 };
         const sumVial = { manejo: 0, velocidad: 0, señales: 0 };
+        
+        const califGeneralDist = { '5 Estrellas': 0, '4 Estrellas': 0, '3 Estrellas': 0, '2 Estrellas': 0, '1 Estrella': 0 };
+        const listaComentarios = [];
 
         data.forEach(r => {
-            // Filtro flexible: solo ignora filas que estén completamente vacías
             if (!r || r.length < 2) return; 
-
             totalValidos++;
 
-            // Ruta
             const ruta = (r[1] || "Sin ruta asignada").trim();
             rutas[ruta] = (rutas[ruta] || 0) + 1;
 
-            // Puntualidad (Columna 19 en tu código anterior)
             if (r[19] && r[19].toLowerCase().includes('bueno')) puntualidadSi++;
 
-            // Mapeo usando la función de texto a número
             sumAtencion.amabilidad += textoANumero(r[2]);
             sumAtencion.actitud += textoANumero(r[3]);
             sumAtencion.atencion += textoANumero(r[4]);
@@ -220,23 +247,53 @@ async function loadData() {
             sumUnidad.asientos += textoANumero(r[10]);
             sumUnidad.cinturones += textoANumero(r[11]);
             sumUnidad.limpieza += textoANumero(r[13]);
+
+            // Calificación General en la Columna R (Índice 17)
+            let califGen = textoANumero(r[17]);
+            if (califGen === 5) califGeneralDist['5 Estrellas']++;
+            else if (califGen === 4) califGeneralDist['4 Estrellas']++;
+            else if (califGen === 3) califGeneralDist['3 Estrellas']++;
+            else if (califGen === 2) califGeneralDist['2 Estrellas']++;
+            else if (califGen === 1) califGeneralDist['1 Estrella']++;
+
+            // Comentarios en la Columna S (Índice 18)
+            let comentarioTexto = (r[18] || "").trim();
+            let textoLimpio = comentarioTexto.toLowerCase();
+            // Filtra vacíos, "ninguna" o "nada"
+            if (comentarioTexto.length > 3 && !textoLimpio.includes('nada') && !textoLimpio.includes('ningun')) {
+                listaComentarios.push({ texto: comentarioTexto, ruta: ruta });
+            }
         });
 
-        if(totalValidos === 0) throw new Error("No hay datos válidos para procesar.");
+        if(totalValidos === 0) throw new Error("No hay datos válidos.");
 
-        // KPI Updates
         document.getElementById('total').innerText = totalValidos;
         document.getElementById('puntualidad').innerText = Math.round((puntualidadSi / totalValidos) * 100) + '%';
         
-        const promAtenc = (sumAtencion.atencion / totalValidos);
-        document.getElementById('calif').innerText = promAtenc.toFixed(1); // Formato a 1 decimal
+        const promNivelServicio = (sumAtencion.atencion / totalValidos);
+        const porcentajeServicio = (promNivelServicio / 5) * 100;
+        document.getElementById('calif').innerText = porcentajeServicio.toFixed(1) + '%';
         
         document.getElementById('seguridad').innerText = Math.round((sumVial.manejo / (totalValidos * 5)) * 100) + '%';
         
         const timeOpts = { hour: '2-digit', minute:'2-digit', second:'2-digit' };
         document.getElementById('status').innerText = 'Última actualización: ' + new Date().toLocaleTimeString('es-MX', timeOpts);
 
-        renderCharts(rutas, sumAtencion, sumUnidad, sumVial, totalValidos);
+        const commentsBox = document.getElementById('commentsBox');
+        commentsBox.innerHTML = '';
+        if(listaComentarios.length === 0) {
+            commentsBox.innerHTML = '<p style="text-align:center; color:#7f8c8d; margin-top:20px;">No hay comentarios o sugerencias recientes.</p>';
+        } else {
+            listaComentarios.slice(-30).reverse().forEach(c => {
+                commentsBox.innerHTML += `
+                    <div class="comment-item">
+                        "${c.texto}"
+                        <span class="comment-route">Ruta: ${c.ruta}</span>
+                    </div>`;
+            });
+        }
+
+        renderCharts(rutas, sumAtencion, sumUnidad, sumVial, califGeneralDist, totalValidos);
 
     } catch (e) {
         document.getElementById('status').innerHTML = '<span class="error-msg">Error: ' + e.message + '</span>';
@@ -246,18 +303,24 @@ async function loadData() {
 
 let charts = {};
 
-function renderCharts(rutas, atencion, unidad, vial, total) {
-    // Paleta de verdes para el gráfico de dona
+function renderCharts(rutas, atencion, unidad, vial, califGeneralDist, total) {
     const greenPalette = ['#0A3D24', '#145A32', '#1E8449', '#27AE60', '#58D68D', '#ABEBC6'];
     
-    // Configuración general para tooltips a 1 decimal
+    const baseDataLabels = {
+        color: '#fff',
+        font: { weight: 'bold', size: 11 },
+        formatter: function(value) {
+            return Number.isInteger(value) ? value : value.toFixed(1);
+        }
+    };
+
     const tooltipConfig = {
         callbacks: {
             label: function(context) {
                 let label = context.dataset.label || context.label || '';
-                if (label) { label += ': '; }
+                if (label) label += ': ';
                 if (context.raw !== null) {
-                    label += typeof context.raw === 'number' ? context.raw.toFixed(1) : context.raw;
+                    label += typeof context.raw === 'number' && !Number.isInteger(context.raw) ? context.raw.toFixed(1) : context.raw;
                 }
                 return label;
             }
@@ -266,7 +329,7 @@ function renderCharts(rutas, atencion, unidad, vial, total) {
 
     Object.values(charts).forEach(c => c.destroy());
 
-    // 1. Participación por Ruta (Doughnut)
+    // 1. Participación por Ruta
     charts.rutas = new Chart(document.getElementById('chartRutas'), {
         type: 'doughnut',
         data: { 
@@ -279,11 +342,39 @@ function renderCharts(rutas, atencion, unidad, vial, total) {
         },
         options: { 
             responsive: true, maintainAspectRatio: false,
-            plugins: { legend: { position: 'right', labels: { boxWidth: 12 } } }
+            plugins: { 
+                legend: { position: 'right', labels: { boxWidth: 12 } },
+                datalabels: { ...baseDataLabels, display: function(context) { return context.dataset.data[context.dataIndex] > 0; } }
+            }
         }
     });
 
-    // 2. Atención del Operador (Bar)
+    // 2. Calificación General
+    charts.general = new Chart(document.getElementById('chartGeneral'), {
+        type: 'bar',
+        data: {
+            labels: Object.keys(califGeneralDist),
+            datasets: [{
+                data: Object.values(califGeneralDist),
+                backgroundColor: ['#0A3D24', '#1E6B3F', '#27AE60', '#F39C12', '#E74C3C'],
+                borderRadius: 4
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true, maintainAspectRatio: false,
+            plugins: { 
+                legend: { display: false },
+                datalabels: { 
+                    ...baseDataLabels, 
+                    color: function(context) { return context.dataIndex >= 3 ? '#fff' : '#fff'; } 
+                }
+            },
+            scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } }
+        }
+    });
+
+    // 3. Atención del Operador
     charts.atencion = new Chart(document.getElementById('chartAtencion'), {
         type: 'bar',
         data: { 
@@ -297,12 +388,34 @@ function renderCharts(rutas, atencion, unidad, vial, total) {
         },
         options: { 
             responsive: true, maintainAspectRatio: false,
-            plugins: { tooltip: tooltipConfig, legend: { display: false } },
+            plugins: { tooltip: tooltipConfig, legend: { display: false }, datalabels: baseDataLabels },
             scales: { y: { beginAtZero: true, max: 5, ticks: { stepSize: 1 } } }
         }
     });
 
-    // 3. Estado de la Unidad (Radar)
+    // 4. Seguridad en Conducción
+    charts.vial = new Chart(document.getElementById('chartVial'), {
+        type: 'polarArea',
+        data: { 
+            labels: ['Manejo', 'Velocidad', 'Señales'], 
+            datasets: [{
+                data: [vial.manejo/total, vial.velocidad/total, vial.señales/total],
+                backgroundColor: ['rgba(30, 107, 63, 0.8)', 'rgba(39, 174, 96, 0.8)', 'rgba(88, 214, 141, 0.8)'],
+                borderWidth: 1
+            }]
+        },
+        options: { 
+            responsive: true, maintainAspectRatio: false,
+            plugins: { 
+                tooltip: tooltipConfig, 
+                legend: { position: 'right', labels: { boxWidth: 12 } },
+                datalabels: { ...baseDataLabels, color: '#000', align: 'end', anchor: 'end' }
+            },
+            scales: { r: { beginAtZero: true, max: 5, ticks: { display: false } } }
+        }
+    });
+
+    // 5. Estado de la Unidad
     charts.unidad = new Chart(document.getElementById('chartUnidad'), {
         type: 'radar',
         data: { 
@@ -318,32 +431,18 @@ function renderCharts(rutas, atencion, unidad, vial, total) {
         },
         options: { 
             responsive: true, maintainAspectRatio: false,
-            plugins: { tooltip: tooltipConfig, legend: { display: false } },
+            plugins: { 
+                tooltip: tooltipConfig, 
+                legend: { display: false },
+                datalabels: { ...baseDataLabels, color: '#0A3D24', align: 'bottom', backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: 3 }
+            },
             scales: { r: { beginAtZero: true, max: 5, ticks: { stepSize: 1, display: false } } }
-        }
-    });
-
-    // 4. Seguridad en Conducción (PolarArea)
-    charts.vial = new Chart(document.getElementById('chartVial'), {
-        type: 'polarArea',
-        data: { 
-            labels: ['Manejo', 'Velocidad', 'Señales'], 
-            datasets: [{
-                data: [vial.manejo/total, vial.velocidad/total, vial.señales/total],
-                backgroundColor: ['rgba(30, 107, 63, 0.8)', 'rgba(39, 174, 96, 0.8)', 'rgba(88, 214, 141, 0.8)'],
-                borderWidth: 1
-            }]
-        },
-        options: { 
-            responsive: true, maintainAspectRatio: false,
-            plugins: { tooltip: tooltipConfig, legend: { position: 'right', labels: { boxWidth: 12 } } },
-            scales: { r: { beginAtZero: true, max: 5, ticks: { display: false } } }
         }
     });
 }
 
 loadData();
-setInterval(loadData, 300000); // Refresco automático
+setInterval(loadData, 300000); 
 </script>
 </body>
 </html>
