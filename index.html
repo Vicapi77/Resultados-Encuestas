@@ -141,15 +141,15 @@
             <div class="chart-container"><canvas id="chartGeneral"></canvas></div>
         </div>
         <div class="chart-box">
-            <h2>Atención del Operador (Promedio)</h2>
+            <h2>Atención del Operador (%)</h2>
             <div class="chart-container"><canvas id="chartAtencion"></canvas></div>
         </div>
         <div class="chart-box">
-            <h2>Seguridad en Conducción (Promedio)</h2>
+            <h2>Seguridad en Conducción (%)</h2>
             <div class="chart-container"><canvas id="chartVial"></canvas></div>
         </div>
         <div class="chart-box">
-            <h2>Estado de la Unidad (Promedio)</h2>
+            <h2>Estado de la Unidad (%)</h2>
             <div class="chart-container"><canvas id="chartUnidad"></canvas></div>
         </div>
         <div class="chart-box">
@@ -306,11 +306,20 @@ let charts = {};
 function renderCharts(rutas, atencion, unidad, vial, califGeneralDist, total) {
     const greenPalette = ['#0A3D24', '#145A32', '#1E8449', '#27AE60', '#58D68D', '#ABEBC6'];
     
+    // Configuración para gráficos de números enteros (Rutas y General)
     const baseDataLabels = {
         color: '#fff',
         font: { weight: 'bold', size: 11 },
         formatter: function(value) {
             return Number.isInteger(value) ? value : value.toFixed(1);
+        }
+    };
+
+    // Configuración para gráficos de porcentajes (Atención, Seguridad, Unidad)
+    const percentageDataLabels = {
+        ...baseDataLabels,
+        formatter: function(value) {
+            return value.toFixed(1) + '%';
         }
     };
 
@@ -327,9 +336,22 @@ function renderCharts(rutas, atencion, unidad, vial, califGeneralDist, total) {
         }
     };
 
+    const percTooltipConfig = {
+        callbacks: {
+            label: function(context) {
+                let label = context.dataset.label || context.label || '';
+                if (label) label += ': ';
+                if (context.raw !== null) {
+                    label += context.raw.toFixed(1) + '%';
+                }
+                return label;
+            }
+        }
+    };
+
     Object.values(charts).forEach(c => c.destroy());
 
-    // 1. Participación por Ruta
+    // 1. Participación por Ruta (Números enteros)
     charts.rutas = new Chart(document.getElementById('chartRutas'), {
         type: 'doughnut',
         data: { 
@@ -349,7 +371,7 @@ function renderCharts(rutas, atencion, unidad, vial, califGeneralDist, total) {
         }
     });
 
-    // 2. Calificación General
+    // 2. Calificación General (Números enteros)
     charts.general = new Chart(document.getElementById('chartGeneral'), {
         type: 'bar',
         data: {
@@ -374,32 +396,33 @@ function renderCharts(rutas, atencion, unidad, vial, califGeneralDist, total) {
         }
     });
 
-    // 3. Atención del Operador
+    // 3. Atención del Operador (PORCENTAJE)
     charts.atencion = new Chart(document.getElementById('chartAtencion'), {
         type: 'bar',
         data: { 
             labels: ['Amabilidad', 'Actitud', 'Atención'], 
             datasets: [{
-                label: 'Promedio (Max 5)',
-                data: [atencion.amabilidad/total, atencion.actitud/total, atencion.atencion/total],
+                label: 'Nivel (%)',
+                // Se divide entre total y entre 5 (maximo de estrellas), luego se multiplica por 100
+                data: [(atencion.amabilidad/total/5)*100, (atencion.actitud/total/5)*100, (atencion.atencion/total/5)*100],
                 backgroundColor: '#1E6B3F',
                 borderRadius: 4
             }]
         },
         options: { 
             responsive: true, maintainAspectRatio: false,
-            plugins: { tooltip: tooltipConfig, legend: { display: false }, datalabels: baseDataLabels },
-            scales: { y: { beginAtZero: true, max: 5, ticks: { stepSize: 1 } } }
+            plugins: { tooltip: percTooltipConfig, legend: { display: false }, datalabels: percentageDataLabels },
+            scales: { y: { beginAtZero: true, max: 100, ticks: { stepSize: 20 } } } // Escala de 0 a 100
         }
     });
 
-    // 4. Seguridad en Conducción
+    // 4. Seguridad en Conducción (PORCENTAJE)
     charts.vial = new Chart(document.getElementById('chartVial'), {
         type: 'polarArea',
         data: { 
             labels: ['Manejo', 'Velocidad', 'Señales'], 
             datasets: [{
-                data: [vial.manejo/total, vial.velocidad/total, vial.señales/total],
+                data: [(vial.manejo/total/5)*100, (vial.velocidad/total/5)*100, (vial.señales/total/5)*100],
                 backgroundColor: ['rgba(30, 107, 63, 0.8)', 'rgba(39, 174, 96, 0.8)', 'rgba(88, 214, 141, 0.8)'],
                 borderWidth: 1
             }]
@@ -407,22 +430,22 @@ function renderCharts(rutas, atencion, unidad, vial, califGeneralDist, total) {
         options: { 
             responsive: true, maintainAspectRatio: false,
             plugins: { 
-                tooltip: tooltipConfig, 
+                tooltip: percTooltipConfig, 
                 legend: { position: 'right', labels: { boxWidth: 12 } },
-                datalabels: { ...baseDataLabels, color: '#000', align: 'end', anchor: 'end' }
+                datalabels: { ...percentageDataLabels, color: '#000', align: 'end', anchor: 'end' }
             },
-            scales: { r: { beginAtZero: true, max: 5, ticks: { display: false } } }
+            scales: { r: { beginAtZero: true, max: 100, ticks: { display: false } } }
         }
     });
 
-    // 5. Estado de la Unidad
+    // 5. Estado de la Unidad (PORCENTAJE)
     charts.unidad = new Chart(document.getElementById('chartUnidad'), {
         type: 'radar',
         data: { 
             labels: ['Limpieza', 'Asientos', 'Cinturones'], 
             datasets: [{
-                label: 'Promedio',
-                data: [unidad.limpieza/total, unidad.asientos/total, unidad.cinturones/total],
+                label: 'Nivel (%)',
+                data: [(unidad.limpieza/total/5)*100, (unidad.asientos/total/5)*100, (unidad.cinturones/total/5)*100],
                 borderColor: '#00B259',
                 backgroundColor: 'rgba(0, 178, 89, 0.25)',
                 pointBackgroundColor: '#0A3D24',
@@ -432,11 +455,11 @@ function renderCharts(rutas, atencion, unidad, vial, califGeneralDist, total) {
         options: { 
             responsive: true, maintainAspectRatio: false,
             plugins: { 
-                tooltip: tooltipConfig, 
+                tooltip: percTooltipConfig, 
                 legend: { display: false },
-                datalabels: { ...baseDataLabels, color: '#0A3D24', align: 'bottom', backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: 3 }
+                datalabels: { ...percentageDataLabels, color: '#0A3D24', align: 'bottom', backgroundColor: 'rgba(255,255,255,0.8)', borderRadius: 3 }
             },
-            scales: { r: { beginAtZero: true, max: 5, ticks: { stepSize: 1, display: false } } }
+            scales: { r: { beginAtZero: true, max: 100, ticks: { stepSize: 20, display: false } } }
         }
     });
 }
