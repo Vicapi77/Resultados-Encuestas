@@ -126,7 +126,7 @@
 <script>
 const csvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ4qE0uQ7au6k7opbEvUSOaBN_mtUUZ12lMxDmQRAXH6misTVwJvmiZy5O-fLrqJf9fN_jFl1Axpsc5/pub?output=csv';
 
-// Función robusta para leer CSV (evita errores si hay comas dentro del texto de la encuesta)
+// Función robusta para leer CSV
 function parseCSV(text) {
     const result = [];
     let row = [], inQuotes = false, currentVal = '';
@@ -154,6 +154,26 @@ function parseCSV(text) {
     return result;
 }
 
+// Función para traducir las respuestas de texto a escala de números (1 al 5)
+function textoANumero(valor) {
+    if (!valor) return 0;
+    
+    let texto = valor.toString().toLowerCase().trim();
+    
+    // Si la celda ya viniera como número, lo respeta
+    let num = parseFloat(texto);
+    if (!isNaN(num) && texto.length === 1) return num;
+
+    // Escala proporcionada
+    if (texto.includes('muy bueno')) return 5;
+    if (texto.includes('bueno') && !texto.includes('muy')) return 4; // Evita confundir 'Bueno' con 'Muy Bueno'
+    if (texto.includes('regular')) return 3;
+    if (texto.includes('muy malo')) return 1;
+    if (texto.includes('malo') && !texto.includes('muy')) return 2;  // Evita confundir 'Malo' con 'Muy Malo'
+
+    return 0; // Por si hay celdas vacías o con texto desconocido
+}
+
 async function loadData() {
     try {
         const response = await fetch(csvUrl);
@@ -178,28 +198,28 @@ async function loadData() {
         data.forEach(r => {
             // Filtro flexible: solo ignora filas que estén completamente vacías
             if (!r || r.length < 2) return; 
-            
-            // QUITA LAS DIAGONALES en la siguiente línea si quieres ver los datos exactos en tu consola (F12)
-            // console.log("Fila de la encuesta:", r);
 
             totalValidos++;
 
+            // Ruta
             const ruta = (r[1] || "Sin ruta asignada").trim();
             rutas[ruta] = (rutas[ruta] || 0) + 1;
 
+            // Puntualidad (Columna 19 en tu código anterior)
             if (r[19] && r[19].toLowerCase().includes('bueno')) puntualidadSi++;
 
-            sumAtencion.amabilidad += parseFloat(r[2]) || 0;
-            sumAtencion.actitud += parseFloat(r[3]) || 0;
-            sumAtencion.atencion += parseFloat(r[4]) || 0;
+            // Mapeo usando la función de texto a número
+            sumAtencion.amabilidad += textoANumero(r[2]);
+            sumAtencion.actitud += textoANumero(r[3]);
+            sumAtencion.atencion += textoANumero(r[4]);
 
-            sumVial.manejo += parseFloat(r[5]) || 0;
-            sumVial.velocidad += parseFloat(r[6]) || 0;
-            sumVial.señales += parseFloat(r[7]) || 0;
+            sumVial.manejo += textoANumero(r[5]);
+            sumVial.velocidad += textoANumero(r[6]);
+            sumVial.señales += textoANumero(r[7]);
 
-            sumUnidad.limpieza += parseFloat(r[13]) || 0;
-            sumUnidad.asientos += parseFloat(r[10]) || 0;
-            sumUnidad.cinturones += parseFloat(r[11]) || 0;
+            sumUnidad.asientos += textoANumero(r[10]);
+            sumUnidad.cinturones += textoANumero(r[11]);
+            sumUnidad.limpieza += textoANumero(r[13]);
         });
 
         if(totalValidos === 0) throw new Error("No hay datos válidos para procesar.");
@@ -303,7 +323,7 @@ function renderCharts(rutas, atencion, unidad, vial, total) {
         }
     });
 
-    // 4. Seguridad en Conducción (PolarArea -> Mejorado con paleta verde)
+    // 4. Seguridad en Conducción (PolarArea)
     charts.vial = new Chart(document.getElementById('chartVial'), {
         type: 'polarArea',
         data: { 
