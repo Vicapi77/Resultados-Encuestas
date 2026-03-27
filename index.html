@@ -176,13 +176,18 @@ async function loadData() {
         const sumVial = { manejo: 0, velocidad: 0, señales: 0 };
 
         data.forEach(r => {
-            if (!r || r.length < 15) return; // Ignorar filas incompletas o vacías
+            // Filtro flexible: solo ignora filas que estén completamente vacías
+            if (!r || r.length < 2) return; 
+            
+            // QUITA LAS DIAGONALES en la siguiente línea si quieres ver los datos exactos en tu consola (F12)
+            // console.log("Fila de la encuesta:", r);
+
             totalValidos++;
 
             const ruta = (r[1] || "Sin ruta asignada").trim();
             rutas[ruta] = (rutas[ruta] || 0) + 1;
 
-            if (r[18] && r[18].toLowerCase().includes('si')) puntualidadSi++;
+            if (r[19] && r[19].toLowerCase().includes('bueno')) puntualidadSi++;
 
             sumAtencion.amabilidad += parseFloat(r[2]) || 0;
             sumAtencion.actitud += parseFloat(r[3]) || 0;
