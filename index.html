@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Ejecutivo | Transporte Bocar</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@300;400;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary: #1a237e; --secondary: #0d47a1; --accent: #00c853; --bg: #f4f7f6; --white: #ffffff; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); margin: 0; padding: 20px; color: #333; }
+        .header { background: var(--primary); color: white; padding: 20px; border-radius: 12px; text-align: center; margin-bottom: 25px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 25px; }
+        .kpi-card { background: var(--white); padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border-top: 5px solid var(--secondary); }
+        .kpi-card h3 { font-size: 0.85em; color: #7f8c8d; text-transform: uppercase; margin: 0; }
+        .kpi-card p { font-size: 2.2em; font-weight: bold; color: var(--primary); margin: 10px 0 0; }
+        .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 25px; }
+        .chart-box { background: var(--white); padding: 25px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); height: 350px; }
+        .chart-box h2 { font-size: 1.1em; color: var(--primary); margin-top: 0; border-bottom: 2px solid #f1f1f1; padding-bottom: 10px; margin-bottom: 20px; }
+        #status { font-size: 0.85em; opacity: 0.9; margin-top: 8px; font-weight: 300; }
+        .error-msg { color: #ff5252; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Dashboard de Satisfacción - Transporte de Personal</h1>
+        <div id="status">Sincronizando datos en tiempo real...</div>
+    </div>
+
+    <div class="kpi-grid">
+        <div class="kpi-card"><h3>Encuestas Totales</h3><p id="total">0</p></div>
+        <div class="kpi-card"><h3>Puntualidad</h3><p id="puntualidad">0%</p></div>
+        <div class="kpi-card"><h3>Nivel de Servicio</h3><p id="calif">--</p></div>
+        <div class="kpi-card"><h3>Seguridad Vial</h3><p id="seguridad">0%</p></div>
+    </div>
+
+    <div class="charts-grid">
+        <div class="chart-box"><h2>Participación por Ruta</h2><canvas id="chartRutas"></canvas></div>
+        <div class="chart-box"><h2>Atención del Operador (Promedio)</h2><canvas id="chartAtencion"></canvas></div>
+        <div class="chart-box"><h2>Estado de la Unidad</h2><canvas id="chartUnidad"></canvas></div>
+        <div class="chart-box"><h2>Seguridad en Conducción</h2><canvas id="chartVial"></canvas></div>
+    </div>
+
+<script>
+// URL DIRECTA
+const csvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ4qE0uQ7au6k7opbEvUSOaBN_mtUUZ12lMxDmQRAXH6misTVwJvmiZy5O-fLrqJf9fN_jFl1Axpsc5/pub?output=csv';
+
+async function loadData() {
+    try {
+        const response = await fetch(csvUrl);
+        if (!response.ok) throw new Error("No se pudo obtener el archivo");
+        
+        const csvText = await response.text();
+        // Limpiamos posibles saltos de línea extraños y separamos filas
+        const rows = csvText.trim().split('\n').map(row => row.split(','));
+        
+        // Verificamos que tengamos datos
+        if (rows.length < 2) {
+            document.getElementById('status').innerHTML = '<span class="error-msg">La hoja de cálculo parece estar vacía.</span>';
+            return;
+        }
+
+        const data = rows.slice(1); // Quitamos encabezados
+        
+        // --- PROCESAMIENTO ---
+        document.getElementById('total').innerText = data.length;
+
+        let puntualidadSi = 0;
+        const rutas = {};
+        const sumAtencion = { amabilidad: 0, actitud: 0, atencion: 0 };
+        const sumUnidad = { limpieza: 0, asientos: 0, cinturones: 0 };
+        const sumVial = { manejo: 0, velocidad: 0, señales: 0 };
+
+        data.forEach(r => {
+            // Ruta (Col B)
+            const ruta = (r[1] || "Sin nombre").trim();
+            rutas[ruta] = (rutas[ruta] || 0) + 1;
+
+            // Puntualidad (Col S - Índice 18)
+            if (r[18] && r[18].toLowerCase().includes('si')) puntualidadSi++;
+
+            // Sumas promedios (Aseguramos que sean números)
+            sumAtencion.amabilidad += parseFloat(r[2]) || 0;
+            sumAtencion.actitud += parseFloat(r[3]) || 0;
+            sumAtencion.atencion += parseFloat(r[4]) || 0;
+
+            sumVial.manejo += parseFloat(r[5]) || 0;
+            sumVial.velocidad += parseFloat(r[6]) || 0;
+            sumVial.señales += parseFloat(r[7]) || 0;
+
+            sumUnidad.limpieza += parseFloat(r[13]) || 0;
+            sumUnidad.asientos += parseFloat(r[10]) || 0;
+            sumUnidad.cinturones += parseFloat(r[11]) || 0;
+        });
+
+        // Actualizar KPIs
+        const total = data.length;
+        document.getElementById('puntualidad').innerText = Math.round((puntualidadSi / total) * 100) + '%';
+        const promAtenc = (sumAtencion.atencion / total).toFixed(1);
+        document.getElementById('calif').innerText = promAtenc >= 4.5 ? 'Excelente' : (promAtenc >= 3.5 ? 'Bueno' : 'Regular');
+        document.getElementById('seguridad').innerText = Math.round((sumVial.manejo / (total * 5)) * 100) + '%';
+        
+        document.getElementById('status').innerText = 'Última actualización: ' + new Date().toLocaleTimeString();
+
+        renderCharts(rutas, sumAtencion, sumUnidad, sumVial, total);
+
+    } catch (e) {
+        document.getElementById('status').innerHTML = '<span class="error-msg">Error de conexión. Intenta subirlo a GitHub Pages para activar el servicio.</span>';
+        console.error("Detalle del error:", e);
+    }
+}
+
+let charts = {}; // Para guardar instancias de gráficos
+
+function renderCharts(rutas, atencion, unidad, vial, total) {
+    const config = (type, labels, datasets) => ({
+        type,
+        data: { labels, datasets },
+        options: { 
+            responsive: true, 
+            maintainAspectRatio: false,
+            scales: type === 'bar' ? { y: { beginAtZero: true, max: 5 } } : {}
+        }
+    });
+
+    // Limpiar gráficos anteriores si existen
+    Object.values(charts).forEach(c => c.destroy());
+
+    charts.rutas = new Chart(document.getElementById('chartRutas'), config('doughnut', Object.keys(rutas), [{
+        data: Object.values(rutas),
+        backgroundColor: ['#1a237e', '#3949ab', '#5c6bc0', '#9fa8da', '#c5cae9']
+    }]));
+
+    charts.atencion = new Chart(document.getElementById('chartAtencion'), config('bar', ['Amabilidad', 'Actitud', 'Atención'], [{
+        label: 'Estrellas',
+        data: [atencion.amabilidad/total, atencion.actitud/total, atencion.atencion/total],
+        backgroundColor: '#0d47a1'
+    }]));
+
+    charts.unidad = new Chart(document.getElementById('chartUnidad'), config('radar', ['Limpieza', 'Asientos', 'Cinturones'], [{
+        label: 'Estado',
+        data: [unidad.limpieza/total, unidad.asientos/total, unidad.cinturones/total],
+        borderColor: '#00c853',
+        backgroundColor: 'rgba(0, 200, 83, 0.2)'
+    }]));
+
+    charts.vial = new Chart(document.getElementById('chartVial'), config('polarArea', ['Manejo', 'Velocidad', 'Señales'], [{
+        data: [vial.manejo/total, vial.velocidad/total, vial.señales/total],
+        backgroundColor: ['#ff5252', '#ffeb3b', '#2196f3']
+    }]));
+}
+
+loadData();
+// Refresco cada 5 minutos
+setInterval(loadData, 300000);
+</script>
+</body>
+</html>
